@@ -1,29 +1,61 @@
-Object.getOwnPropertyNames = replaceAndCopyFunction(Object.getOwnPropertyNames, function(list) {
-  if (list.indexOf(storeName) != -1) list.splice(list.indexOf(storeName), 1);
-  return list;
-});
+// Object for storing replacements
+let replacements = {};
+
+// Modify code by replacing identifiers based on the `dumpedVarNames` mapping
 function modifyCode(text) {
-  for(const [name, regex] of Object.entries(dumpedVarNames)) {
+  for (const [name, regex] of Object.entries(dumpedVarNames)) {
     const matched = text.match(regex);
     if (matched) {
       console.log(name, regex, matched);
-      for(const [replacement, code] of Object.entries(replacements)) {
+      for (const [replacement, code] of Object.entries(replacements)) {
+        // Update the replacement object by replacing the identifier dynamically
         delete replacements[replacement];
-        replacements[replacement.replaceAll(name, matched[1])] = [code[0].replaceAll(name, matched[1]), code[1]];
+        replacements[replacement.replaceAll(name, matched[1])] = [
+          code[0].replaceAll(name, matched[1]),
+          code[1]
+        ];
       }
     }
   }
 
-  for(const [replacement, code] of Object.entries(replacements)) {
+  // Apply replacements to the text content
+  for (const [replacement, code] of Object.entries(replacements)) {
     text = text.replaceAll(replacement, code[1] ? code[0] : replacement + code[0]);
   }
+  return text;
 }
+
+// Add a replacement rule to the replacements object
+function addReplacement(replacement, code, replaceit = false) {
+  replacements[replacement] = [code, replaceit];
+}
+
+// Helper function to replace and copy functions
+function replaceAndCopyFunction(oldFunc, newFunc) {
+  return new Proxy(oldFunc, {
+    apply(orig, origIden, origArgs) {
+      try {
+        const result = orig.apply(origIden, origArgs);
+        newFunc(result);  // Execute the new function after the original
+        return result;
+      } catch (error) {
+        console.error("Error in function proxy:", error);
+      }
+    },
+    get(orig) {
+      return orig;
+    }
+  });
+}
+
+// Example replacements
 addReplacement('"CPacketEntityVelocity",$=>{const et=j.world.entitiesDump.get($.id);', `
   if (player$1 && $.id == player$1.id && enabledModules["Velocity"]) {
     if (velocityhori[1] == 0 && velocityvert[1] == 0) return;
     $.motion = new Vector3$1($.motion.x * velocityhori[1], $.motion.y * velocityvert[1], $.motion.z * velocityhori[1]);
   }
 `);
+
 addReplacement('ClientSocket.on("CPacketMessage",$=>{', `
   if (player$1 && $.text && !$.text.startsWith(player$1.name) && enabledModules["ChatDisabler"] && chatDelay < Date.now()) {
     chatDelay = Date.now() + 1000;
@@ -32,45 +64,36 @@ addReplacement('ClientSocket.on("CPacketMessage",$=>{', `
     }, 50);
   }
 `);
+
 addReplacement('(this.drawSelectedItemStack(),this.drawHintBox())', `
   if (ctx$3 && enabledModules["TextGUI"]) {
     // Custom drawing logic
   }
 `);
+
+// Escapes special characters in a string for use in a regular expression
 function escapeRegExp(str) {
-    return str.replace(/[.*+?^=!:${}()|\[\]\/\\]/g, "\\$&"); // escape special characters
+  return str.replace(/[.*+?^=!:${}()|\[\]\/\\]/g, "\\$&"); // escape special characters
 }
-async loadSpritesheet() {
-    await this.loadVape();  // Ensure vape texture is loaded first
-    super.loadSpritesheet();  // Now you can call the parent method if needed
+
+// The async `loadSpritesheet` method to handle sprite sheet loading
+async function loadSpritesheet() {
+  await this.loadVape();  // Ensure vape texture is loaded first
+  super.loadSpritesheet();  // Now you can call the parent method if needed
 }
+
+// Ensure there's only one definition of the `replaceAndCopyFunction`
 function replaceAndCopyFunction(oldFunc, newFunc) {
-    return new Proxy(oldFunc, {
-        apply(orig, origIden, origArgs) {
-            try {
-                const result = orig.apply(origIden, origArgs);
-                newFunc(result);
-                return result;
-            } catch (error) {
-                console.error("Error in function proxy:", error);
-            }
-        },
-        get(orig) { return orig; }
-    });
-}
-function addReplacement(replacement, code, replaceit = false) {
-    replacements[replacement] = [code, replaceit];
-}
-// Helper function to replace and copy functions
-function replaceAndCopyFunction(oldFunc, newFunc) {
-    return new Proxy(oldFunc, {
-        apply(orig, origIden, origArgs) {
-            const result = orig.apply(origIden, origArgs);
-            newFunc(result);
-            return result;
-        },
-        get(orig) { return orig; }
-    });
+  return new Proxy(oldFunc, {
+    apply(orig, origIden, origArgs) {
+      const result = orig.apply(origIden, origArgs);
+      newFunc(result);  // Execute the new function after the original
+      return result;
+    },
+    get(orig) {
+      return orig;
+    }
+  });
 }
 
 // Setup hooks for Object.getOwnPropertyNames and Object.getOwnPropertyDescriptors to prevent certain variables from being dumped
